@@ -3,7 +3,7 @@
 # standalone Web Service using the settings below.
 services:
   - type: web
-    name: saturday-planner-api
+    name: trip-planner-api
     runtime: python
     rootDir: backend
     plan: free

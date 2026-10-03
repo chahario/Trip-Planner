@@ -45,7 +45,7 @@ from app.tools.parse import parse_user_preferences
 
 settings = get_settings()
 logging.basicConfig(level=settings.log_level)
-log = logging.getLogger("saturday-planner")
+log = logging.getLogger("trip-planner")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):

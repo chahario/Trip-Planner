@@ -1,4 +1,4 @@
-# Frontend — Perfect Saturday Planner (React + Vite)
+# Frontend — Trip Planner (React + Vite)
 
 React + TypeScript SPA. A structured/free-text form, a live agent-trace panel fed
 by Server-Sent Events, and a plan view with per-stop reasoning and trade-offs.

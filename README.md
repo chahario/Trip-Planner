@@ -109,7 +109,7 @@ The two services deploy independently.
 - Health check: `GET /health`.
 
 ### Frontend → Vercel (or Netlify / any static host)
-- Set env var **`VITE_API_BASE_URL`** to your deployed backend URL (e.g. `https://saturday-planner-api.onrender.com`).
+- Set env var **`VITE_API_BASE_URL`** to your deployed backend URL (e.g. `https://trip-planner.onrender.com`).
 - Vercel: import repo, root `frontend/` — `vercel.json` handles the rest.
 - Netlify: `netlify.toml` is included.
 

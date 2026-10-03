@@ -371,7 +371,7 @@ class PlanResponse(BaseModel):
 class SavePlanRequest(BaseModel):
     """Body for POST /api/plans — persist a generated plan plus optional notes."""
 
-    title: Optional[str] = Field(default=None, examples=["Chill Saturday in Bangalore"])
+    title: Optional[str] = Field(default=None, examples=["3-day trip to Bangalore"])
     notes: str = Field(default="", description="The user's own tips/notes for this plan")
     plan: Plan
     request: Optional[PlanRequest] = None

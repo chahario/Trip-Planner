@@ -1,4 +1,4 @@
-# Backend — Perfect Saturday Planner (FastAPI)
+# Backend — Trip Planner (FastAPI)
 
 Async FastAPI service. The agent runs a chain of six discrete tools and emits a
 trace step after each. Real place data from OpenStreetMap; no API keys required.
