@@ -1,0 +1,12 @@
+# Lower bounds chosen so wheels exist for both Python 3.11 (Docker image) and
+# newer interpreters like 3.14 (local dev). pydantic>=2.11 ships prebuilt
+# pydantic-core wheels for 3.13/3.14, avoiding a from-source Rust build.
+fastapi>=0.115.6
+uvicorn[standard]>=0.34.0
+pydantic>=2.11
+pydantic-settings>=2.7.1
+httpx>=0.28.1
+# Optional: enables the GPT narration hook when LLM_API_KEY is set.
+openai>=1.0.0
+# Keyless web image search (real hotel/stop photos).
+ddgs>=9.0.0

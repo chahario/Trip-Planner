@@ -1,0 +1,19 @@
+# Render.com blueprint — one-click deploy for the backend.
+# In Render: New > Blueprint > point at this repo. Or deploy the backend as a
+# standalone Web Service using the settings below.
+services:
+  - type: web
+    name: saturday-planner-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: CORS_ORIGINS
+        value: "*"          # tighten to your frontend URL for production
+      - key: LLM_PROVIDER
+        value: "none"
+      - key: PYTHON_VERSION
+        value: "3.11.9"

@@ -1,0 +1,25 @@
+# One-command local run: docker compose up --build
+# Frontend on http://localhost:8080, backend on http://localhost:8000
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - CORS_ORIGINS=*
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Point the built SPA at the backend service.
+        VITE_API_BASE_URL: "http://localhost:8000"
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend

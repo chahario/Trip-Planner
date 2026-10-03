@@ -1,0 +1,10 @@
+# Secrets — never commit real keys
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Local SQLite data
+*.db

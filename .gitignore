@@ -1,0 +1,21 @@
+# Secrets — NEVER commit real keys
+.env
+**/.env
+!**/.env.example
+
+# Python
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+
+# Node / frontend build
+**/node_modules/
+**/dist/
+
+# Local SQLite data
+**/*.db
+
+# OS / editor
+.DS_Store
+*.log

@@ -1,0 +1,33 @@
+# Render.com blueprint — ONE free service that serves the API + the web app.
+#
+# Deploy:  render.com → New → Blueprint → pick this repo → Apply.
+# Then set LLM_API_KEY (and any optional keys) in the service's Environment tab.
+#
+# Note: the free plan sleeps after ~15 min idle (first request then takes
+# ~30-60s to wake) and has an EPHEMERAL disk — saved trips/history/accounts
+# reset on each deploy or restart. See DEPLOY.md for a persistent option.
+services:
+  - type: web
+    name: trip-planner
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # --- LLM (required for AI itineraries, city selection, highlights) ---
+      - key: LLM_PROVIDER
+        value: openai
+      - key: LLM_MODEL
+        value: gpt-4o-mini
+      - key: LLM_API_KEY
+        sync: false            # secret — set it in the Render dashboard
+      # Same-origin, so CORS can stay closed. Use "*" only if you add a
+      # separate frontend host later.
+      - key: CORS_ORIGINS
+        value: ""
+      # Optional free integrations (leave unset to use keyless fallbacks):
+      # - key: GEOAPIFY_API_KEY   # real hotels near the plan (free, 3k/day)
+      #   sync: false
+      # - key: ORS_API_KEY        # travel time between stops (free tier)
+      #   sync: false
