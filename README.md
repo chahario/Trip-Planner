@@ -1,193 +1,262 @@
-# Trip Planner
+# 🗺️ Trip Planner
 
-An AI agent that plans a fun, personalised day out from your city, budget, time,
-mood, interests and constraints. It uses **real places from OpenStreetMap**,
-reasons about your inputs through a chain of discrete tools, and shows its work
-on demand. You can **save plans with your own notes** (persisted in the backend)
-and **book hotels & buses** via pre-filled deep-links to real providers.
+An AI travel agent that turns a loose idea — *"10 days in Thailand, I like beaches
+and food"* — into a real, day-by-day itinerary: which **cities** to visit and in
+what order, **where to stay** each night, **what each place is famous for**, the
+day's **activities**, **how to get there and back**, and a transparent **cost
+breakdown** — all grounded in real data so it doesn't make places up.
+
+It plans a **single city**, a **country**, or a whole **continent**, and shows its
+agents' work on demand.
 
 - **Frontend:** React + TypeScript + Vite
-- **Backend:** FastAPI (Python 3.11), async
-- **Data:** OpenStreetMap — Nominatim (geocoding) + Overpass (places). **No API keys.**
-- **Reasoning:** deterministic rule-based engine (runs with zero keys); optional LLM hook
+- **Backend:** FastAPI (Python), async, Server-Sent-Events streaming
+- **AI:** OpenAI `gpt-4o-mini` for reasoning, grounded by **web search + live geo/weather data**
+- **Everything else is free & keyless:** Open-Meteo, OpenStreetMap, Wikivoyage, DuckDuckGo
+
+---
+
+## ✨ Features
+
+**Planning**
+- **City / country / continent aware** — a classifier decides what kind of place you typed and plans accordingly (e.g. *Thailand* → Bangkok → Chiang Mai → islands; *Bangalore* → one city).
+- **AI city selection, matched to you** — the agent picks and orders the cities from your interests, pace and budget, grounded in live web search. Same country + different interests → different cities.
+- **Day-by-day itinerary** with the city you're in each day, real named stops (morning→evening), and per-stop **✅ Try / ⚠️ Avoid** tips and **➡️ commute to the next stop** (mode + fare).
+- **"What this city is famous for"** — signature experiences and local dishes (with where to eat them), shown only on the days you're in that city.
+- **Where to stay** — real hotels per city, with a "🏨 staying in *X* tonight" pointer on each day.
+- **Getting there & back** — every realistic transport mode (flight only if an airport exists), round-trip priced, **click a mode to re-price the whole trip**.
+- **Transparent cost breakdown** — travel + stay + food + local transport + activities, with the travel cost **fetched via tool calls**, not guessed.
+- **Day-by-day weather** for the city you're in, on that day's real date.
+
+**Trust & UX**
+- **Anti-hallucination** — every city/place is verified against real geo data; a Critic step enforces the exact day count and flags ungrounded output, then repairs it.
+- **Clarifying questions** that add insight (it *recommends* cities/budget/best-time rather than asking you for them).
+- **Visible agent trace** — the whole pipeline streams live, hidden until you click.
+- **Accounts + history** — every trip is auto-saved; log in to sync across devices, or stay a guest.
+- **Per-user rate limit** (default 10 trips / 24 h) to protect the API budget.
+- **Graceful degradation** — if the LLM or an API is down, it falls back to curated data and never crashes.
+
+---
+
+## 🏗️ Architecture
+
+One deployable service: **FastAPI serves the API *and* the built React app at the
+same origin** (no CORS, one free host).
 
 ```
-├── backend/     FastAPI agent, 6 tools, OSM client, SSE streaming, tests
-├── frontend/    React SPA: form, live trace panel, plan view
-└── docker-compose.yml   one-command local run
+┌──────────────────────────────────────────────────────────────┐
+│                      Browser (React SPA)                       │
+│  PlannerForm · ClarifyPanel · TracePanel (live agent work)     │
+│  PlanView (day tabs · route strip · weather · highlights ·     │
+│            stays · stops+tips · getting-there · cost)          │
+└───────────────┬────────────────────────────────────────────────┘
+                │  HTTPS  (POST /api/plan/stream  → SSE: trace…then plan)
+                ▼
+┌──────────────────────────────────────────────────────────────┐
+│                   FastAPI backend (async)                      │
+│                                                                │
+│   Agent orchestrator  ── streams a TraceStep per stage ──┐     │
+│        │                                                 │     │
+│        ▼                                                 ▼     │
+│   Tools layer                                     SQLite store │
+│   destination · llm_plan · highlights · weather   users ·      │
+│   web_search · image_search · cost_tools ·        sessions ·   │
+│   osm_client · validate(critic) · options         saved_plans ·│
+│                                                   trip_events  │
+└───────────────┬────────────────────────────────────────────────┘
+                │
+     ┌──────────┼───────────────┬───────────────┬──────────────┐
+     ▼          ▼               ▼               ▼              ▼
+  OpenAI    Open-Meteo     OpenStreetMap    Wikivoyage     DuckDuckGo
+ (LLM)    (weather +      (Nominatim geo +  (city          (web text +
+          geocode/        Overpass POIs)    discovery       image search)
+          classify)                         fallback)
+```
+
+**Design law:** *APIs supply facts · code makes the decisions · the LLM suggests &
+narrates.* The day count and night allocation are **pure code** (guaranteed exact);
+the LLM proposes cities and prose but never silently changes the numbers, and
+anything it names is verified against real geo data before it reaches you.
+
+### Project structure
+```
+trip-planner/
+├── Dockerfile            # single-image build (frontend + backend)
+├── render.yaml           # one-click free deploy (Render Blueprint)
+├── DEPLOY.md             # step-by-step hosting guide
+├── backend/
+│   └── app/
+│       ├── main.py       # FastAPI routes, SSE, auth, rate limit, serves the SPA
+│       ├── agent/
+│       │   └── orchestrator.py   # the multi-stage agent pipeline
+│       ├── tools/        # one module per capability (see below)
+│       ├── models.py     # Pydantic schemas (the data contract)
+│       └── store.py      # SQLite: users, sessions, saved plans, rate-limit events
+└── frontend/
+    └── src/
+        ├── components/   # PlanView, GettingThere, Hotels, CityHighlights, …
+        └── lib/          # api client, auth, types
 ```
 
 ---
 
-## Live URL
+## 🤖 AI agent architecture
 
-The frontend is a static SPA and the backend is one FastAPI service — deploy each
-once and you get a public URL you can open, type into and test. See
-[Deployment](#deployment). The app works out of the box with **no API keys**.
+The request is **not one giant prompt**. It flows through discrete, independently
+testable stages, each of which streams a line to the live trace. Grounding (web
+search + real geo/weather) happens at every stage that could otherwise hallucinate.
 
----
-
-## How the agent works
-
-It is **not one giant prompt**. The request flows through discrete, independently
-testable tools, and each one emits a line to the visible trace:
-
-| # | Tool | What it does |
-|---|------|--------------|
-| 1 | `parseUserPreferences` | Normalises structured **or** free-text input → energy level, interests, diet, budget, time, crowd-aversion |
-| 2 | `geocodeCity` | Nominatim: city → lat/lon (real data) |
-| 3 | `getActivityOptions` | Overpass: real parks, venues, museums near the city, mapped from interests |
-| 4 | `getFoodOptions` | Overpass: real cafés/restaurants, filtered by budget & diet |
-| 5 | `generateFinalPlan` | Sequences an itinerary by energy & time; writes per-stop *why it fits* + *trade-offs* |
-| 6 | `estimateCost` / `validatePlan` | Totals cost & time; checks budget, time, diet and crowd constraints → warnings |
-
-**Required behaviours, all covered:**
-
-- ✅ Understands preferences (structured JSON *and* free text)
-- ✅ Uses 6 tools, not one prompt
-- ✅ Real, specific plans from live OSM data
-- ✅ Explains *why* each part fits the user
-- ✅ **Graceful failure handling** — if OSM is unreachable or empty, it falls back to
-  curated data, and if *nothing* is found it returns a safe fallback plan (never an error)
-- ✅ **Shows a trace** of every tool call and its result
-
-**Bonus behaviours included:**
-
-- ✅ Real data (OpenStreetMap, no key) with curated fallback
-- ✅ Streaming "agent is thinking" trace (Server-Sent Events)
-- ✅ Fallback plan when no options match
-- ✅ Clarifying questions when input is vague (non-blocking — still plans with defaults)
-- ✅ Trade-off notes (e.g. "slightly over budget but fits your mood")
-- ✅ Avoids unrealistic suggestions (durations/costs are heuristic-bounded; crowd/energy aware)
-
----
-
-## Run locally
-
-### Option A — Docker (one command)
-
-```bash
-docker compose up --build
-# frontend → http://localhost:8080
-# backend  → http://localhost:8000  (docs at /docs)
+```
+  user input
+     │
+ 1 ▸ parseUserPreferences        normalise structured OR free-text → interests, pace, budget, days, origin
+     │
+ 2 ▸ askClarifyingQuestions      (non-blocking) AI asks for insight; recommends cities/time/budget
+     │
+ 3 ▸ resolveDestination ─────────────────────────────────────────────┐
+     │     classify (Open-Meteo feature codes) → city? country? region? continent?
+     │        ├─ city      → single-stop route
+     │        └─ multi     → AI CITY SELECTION  (web-grounded, interest-matched)
+     │                         → verify every city exists (geocode)   ← anti-hallucination
+     │                         → allocate nights   (PURE CODE, exact day count)
+     │                         → order route (geographic) + inter-city legs
+     │                         (fallback: Wikivoyage city discovery + scoring)
+     │                                                                └────────┘
+ 4 ▸ enrichCities                 per-city weather (+ live OSM places for single-city)
+     │
+ 5 ▸ generateWithAI / buildItinerary
+     │     multi-city or thin data → AI itinerary of REAL named places per city
+     │     else                    → curated/live builder
+     │
+ 5b▸ discoverHighlights           per city: "famous for" experiences + signature foods  (web-grounded)
+ 5c▸ recommendStays               per city: real hotels for the nights you sleep there
+     │
+ 6 ▸ estimateCost                 LLM cost agent that MUST call tools:
+     │                              get_flight_cost / get_hotel_cost  (deterministic pricing)
+     │                            + estimate_arrival_transport  (web-grounded, round-trip, modes)
+     │
+ 6b▸ criticCheck                  enforce exact day count · flag ungrounded · REPAIR gaps
+ 6c▸ validatePlan                 check against budget / time / diet / crowd constraints
+     │
+ 7 ▸ routeStops                   travel legs between stops (OpenRouteService, optional)
+ 8 ▸ dayWeather                   per-day forecast for the city you're in that day
+     │
+     ▼
+  streamed plan  (trace steps first, then the final plan)
 ```
 
-### Option B — run each service
+### The agents / tools
+
+| Stage (trace name) | Module | Grounded by | What it does |
+|---|---|---|---|
+| `parseUserPreferences` | `tools/parse.py` | — | structured **or** free-text → normalized preferences |
+| `askClarifyingQuestions` | `tools/llm_plan.py` | LLM | asks for *insight*; recommends, never interrogates |
+| `resolveDestination` | `tools/destination.py` | Open-Meteo, web search, OSM | classify place → **AI city selection** → verify → allocate nights (code) |
+| `enrichCities` | `tools/weather.py`, `options.py` | Open-Meteo, OSM | per-city weather (+ real places for single-city) |
+| `generateWithAI` | `tools/llm_plan.py` | LLM + verify | day-by-day itinerary of **real named places** |
+| `discoverHighlights` | `tools/highlights.py` | web search + LLM | what each city is **famous for** + signature food |
+| `recommendStays` | `tools/llm_plan.py` | LLM | real hotels **per city** |
+| `estimateCost` | `tools/llm_plan.py`, `cost_tools.py` | LLM **tool calls** + web | round-trip transport + itemized cost (fetched, not guessed) |
+| `criticCheck` | `tools/validate.py` | code | day-count authority, grounding checks, **auto-repair** |
+| `validatePlan` | `tools/validate.py` | code | budget / time / diet / crowd warnings |
+| `routeStops` | `tools/routing.py` | OpenRouteService | travel time between stops (optional) |
+| `dayWeather` | `tools/weather.py` | Open-Meteo | per-day forecast for that day's city |
+
+### How hallucination is prevented
+1. **Classification & geo come from data, not the model** — place *type* and coordinates are from Open-Meteo (GeoNames) and OSM.
+2. **Every city/place the LLM proposes is verified** by geocoding; anything that can't be located is dropped before it reaches the plan.
+3. **The web grounds the content** — city choices, "famous for", transport existence/fares and durations are fed from real DuckDuckGo results.
+4. **A Critic owns the numbers** — nights/day-count are pure code; the Critic re-checks completeness and repairs or honestly flags gaps instead of inventing stops.
+
+---
+
+## 🔌 Data sources
+
+| Source | Used for | Key? |
+|---|---|---|
+| **OpenAI** (`gpt-4o-mini`) | city selection, itinerary, highlights, cost reasoning | your key (cheap) |
+| **Open-Meteo** | weather, geocoding, **place classification** (GeoNames feature codes) | ✅ free, no key |
+| **OpenStreetMap** (Nominatim + Overpass) | geocoding, live POIs | ✅ free, no key |
+| **Wikivoyage** | city-discovery fallback | ✅ free, no key |
+| **DuckDuckGo** (`ddgs`) | web text grounding + real photos | ✅ free, no key |
+| **Geoapify** *(optional)* | real hotels near the plan | ✅ free 3k/day |
+| **OpenRouteService** *(optional)* | travel time between stops | ✅ free tier |
+
+The app boots with **only** an OpenAI key; everything else has a keyless default.
+
+---
+
+## ▶️ Run locally
 
 **Backend**
 ```bash
 cd backend
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload                        # http://localhost:8000
+cp .env.example .env          # add your LLM_API_KEY
+uvicorn app.main:app --reload # http://localhost:8000
 ```
 
-**Frontend** (in a second terminal)
+**Frontend** (second terminal)
 ```bash
 cd frontend
 npm install
-npm run dev                                          # http://localhost:5173
+npm run dev                   # http://localhost:5173  (Vite proxies /api → :8000)
 ```
-In dev, Vite proxies `/api` to `localhost:8000`, so no CORS setup is needed.
 
-### Run the tests
+**Tests**
 ```bash
-cd backend
-pip install -r requirements-dev.txt
-pytest            # 13 tests, OSM mocked — fully offline
+cd backend && pip install -r requirements-dev.txt && pytest   # 13 tests, fully offline
 ```
 
 ---
 
-## Deployment
+## 🚀 Deploy (free)
 
-The two services deploy independently.
+The production `Dockerfile` builds the frontend and serves it from FastAPI, so
+**one free service** runs the whole app. Fastest path is Render:
 
-### Backend → Render (or Railway / Fly / any Docker host)
-- Render: **New → Blueprint** on this repo (uses `backend/render.yaml`), or a **Web Service** with root `backend/`, build `pip install -r requirements.txt`, start `uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
-- A `Dockerfile` and `railway.toml` are included too.
-- Health check: `GET /health`.
+1. Push to GitHub.
+2. render.com → **New → Blueprint** → pick the repo → **Apply** (reads `render.yaml`).
+3. Set `LLM_API_KEY` in the service's Environment tab.
 
-### Frontend → Vercel (or Netlify / any static host)
-- Set env var **`VITE_API_BASE_URL`** to your deployed backend URL (e.g. `https://trip-planner.onrender.com`).
-- Vercel: import repo, root `frontend/` — `vercel.json` handles the rest.
-- Netlify: `netlify.toml` is included.
-
-> After deploying, set the backend's `CORS_ORIGINS` to your frontend URL for a tighter production setup (defaults to `*`).
+Full step-by-step (plus Fly.io for persistent saved trips, Railway, HF Spaces) is
+in **[DEPLOY.md](DEPLOY.md)**.
 
 ---
 
-## API
+## 📡 API
 
-`POST /api/plan` — full plan as JSON.
-`POST /api/plan/stream` — Server-Sent Events: `trace` steps, then a final `plan`.
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/plan` | full plan as JSON |
+| `POST /api/plan/stream` | **SSE**: `trace` steps, then the final `plan` |
+| `POST /api/clarify` | the agent's clarifying questions for a request |
+| `GET /api/usage` | trip-quota usage (N of 10 left, reset countdown) |
+| `GET /api/plans` · `POST` · `GET/PATCH/DELETE /{id}` | saved-trip history (scoped by user/guest token) |
+| `POST /api/auth/signup \| login \| logout` · `GET /api/auth/me` | accounts |
+| `GET /api/integrations` | which optional APIs are live |
+| `GET /health` | liveness |
 
-**Saved plans** (persisted in SQLite, scoped by an `X-User-Token` header the client generates):
-
-`GET /api/plans` — list the caller's saved plans.
-`POST /api/plans` — save a plan `{ title?, notes?, plan, request? }`.
-`GET /api/plans/{id}` · `PATCH /api/plans/{id}` (edit title/notes) · `DELETE /api/plans/{id}`.
-
-```json
-{
-  "city": "Bangalore",
-  "budget": 2000,
-  "available_time": "4 hours",
-  "mood": "tired but wants to do something fun",
-  "interests": ["food", "music", "walks"],
-  "constraints": ["vegetarian", "avoid crowded places"]
-}
-```
-Free text is also accepted via a `free_text` field. Interactive docs at `/docs`.
-
-`GET /api/integrations` — which optional APIs are currently active.
-`GET /api/hotels?city=…` — real hotel offers when Amadeus is configured.
+Interactive docs at `/docs`.
 
 ---
 
-## Optional API integrations (add keys one at a time)
+## ⚙️ Key environment variables
 
-Every integration is **off by default and activates only when its key is set** —
-the app always falls back (OSM → curated → deep-links) so nothing breaks while
-keys are missing. Set these as environment variables (or in `backend/.env`):
+| Variable | Default | Purpose |
+|---|---|---|
+| `LLM_API_KEY` | — | OpenAI key (required for the AI features) |
+| `LLM_MODEL` | `gpt-4o-mini` | model id |
+| `DB_PATH` | `tripplanner.db` | SQLite file (point at a volume to persist) |
+| `TRIP_RATE_LIMIT` / `TRIP_RATE_WINDOW_HOURS` | `10` / `24` | per-user trip quota (0 disables) |
+| `HTTP_USER_AGENT` | app default | **must not be generic** — Nominatim 403s placeholder agents |
+| `GEOAPIFY_API_KEY`, `ORS_API_KEY` | — | optional free integrations |
 
-| Feature | Env var(s) | Free? | Get a key |
-|---|---|---|---|
-| **Weather** (Open-Meteo) | *(none — on by default)* | ✅ free, no key | — |
-| **GPT narration** | `LLM_API_KEY` (+ optional `LLM_MODEL`, default `gpt-4o-mini`) | paid | platform.openai.com |
-| **Real hotels near the plan** (Geoapify) | `GEOAPIFY_API_KEY` | ✅ free 3k/day, no card | geoapify.com |
-| **Travel time between stops** (OpenRouteService) | `ORS_API_KEY` | ✅ free tier | openrouteservice.org |
-| **Places + food** (Foursquare) | `FOURSQUARE_API_KEY` | ⚠️ 2025 API needs paid credits | foursquare.com/developers |
-| **Real hotels** (Amadeus, alt.) | `AMADEUS_CLIENT_ID`, `AMADEUS_CLIENT_SECRET` | ✅ free test env | developers.amadeus.com |
-
-When a key is present: **Geoapify** returns real hotels near the first
-recommended stop (preferred; free and no billing), OpenRouteService adds travel
-legs to the itinerary, Foursquare is preferred over OSM for activities/food
-*(if the account has credits — the 2025 API is no longer free)*, Amadeus is a
-secondary hotel source, and GPT warms up the plan summary. Check
-`GET /api/integrations` to see what's live. Keys live in `backend/.env` (never
-commit it — see `backend/.gitignore`), not in source.
-
-**Saved plans work for guest users** — no login. Each browser gets an opaque
-token (stored locally, sent as `X-User-Token`); plans + notes persist in the
-backend SQLite DB and sync across devices via the "Sync code".
-
-**Bookings are location-aware:** hotels and restaurants are centred on the first
-recommended stop (e.g. "hotels near Cubbon Park"), while intercity buses target
-the destination city.
+See `backend/.env.example` for the full list. Never commit `backend/.env`.
 
 ---
 
-## How AI tools were used in the build
-
-This project was built with **Claude (Claude Code / Opus)**. Claude scaffolded the
-FastAPI agent and the tool-per-function architecture, wrote the OpenStreetMap
-Overpass/Nominatim client and the rule-based reasoner, generated the React UI with
-the live SSE trace, and wrote the pytest suite. Every backend test was run and
-passing, and the frontend was type-checked and built, before hand-off. I directed
-the architecture (real data + graceful fallback, zero-key operation) and reviewed
-all decisions.
-
----
-
-Data © OpenStreetMap contributors. Cost and time figures are estimates.
+Built with [Claude Code](https://claude.com/claude-code). Data © OpenStreetMap
+contributors · weather © Open-Meteo. Costs, times and fares are grounded
+estimates — confirm exact prices when booking.

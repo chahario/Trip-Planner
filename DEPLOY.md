@@ -32,7 +32,7 @@ backend into a single image that runs anywhere.
    # create an empty repo on github.com, then:
    git remote add origin https://github.com/<you>/trip-planner.git
    git push -u origin main
-   ```
+   ```  
 
    ⚠️ **`backend/.env` is git-ignored and must stay that way** — it holds your
    real keys. Only `.env.example` (no secrets) is committed. If any real key was
