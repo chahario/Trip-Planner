@@ -21,6 +21,8 @@ for _var in (
 os.environ["WEATHER_ENABLED"] = "false"
 # Disable the per-user trip rate limit so repeated runs stay deterministic.
 os.environ["TRIP_RATE_LIMIT"] = "0"
+# Web image search hits the network (DuckDuckGo); keep it off for offline tests.
+os.environ["IMAGE_SEARCH_ENABLED"] = "false"
 
 from app.config import get_settings  # noqa: E402
 

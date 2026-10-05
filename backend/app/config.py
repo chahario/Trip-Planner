@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     # so everything keeps working with zero configuration.
     # ------------------------------------------------------------------
 
+    # --- Web image search (DuckDuckGo, keyless): real photos for hotels/stops ---
+    image_search_enabled: bool = True
+
     # --- Weather: Open-Meteo (FREE, no key) ---
     weather_enabled: bool = True
     open_meteo_url: str = "https://api.open-meteo.com/v1/forecast"

@@ -336,19 +336,9 @@ async def _attach_cost_and_extras(plan: Plan, prefs: Preferences, data: dict) ->
     except Exception as exc:  # noqa: BLE001
         log.warning("cost estimate failed: %s", exc)
 
-    try:
-        from app.tools import image_search
-        hotel_qs = [f"{h.name} {h.area or ''} {h.city or ''} hotel" for h in plan.hotels]
-        stop_qs = [f"{i.title} {i.city or ''}" for i in plan.items]
-        urls = await image_search.search_images(hotel_qs + stop_qs)
-        for h, u in zip(plan.hotels, urls[:len(hotel_qs)]):
-            if u:
-                h.image_url = u
-        for item, u in zip(plan.items, urls[len(hotel_qs):]):
-            if u:
-                item.place.image_url = u
-    except Exception as exc:  # noqa: BLE001
-        log.warning("attaching images failed: %s", exc)
+    # Photos for hotels + stops are attached once, centrally, in the orchestrator
+    # (after per-city stays are added too) so every card gets a matching image —
+    # see image_search.attach_images.
 
 
 # ===========================================================================

@@ -261,6 +261,17 @@ class Agent:
             else:
                 yield emit("recommendStays", "warn", "No stays found for these cities.")
 
+        # 5d. Photos — attach a REAL, matching image to every hotel and stop, in
+        #     one pass now that all hotels (incl. per-city stays) and stops exist.
+        #     This is what stops hotels showing random/stock images.
+        from app.tools import image_search
+        yield emit("attachPhotos", "start", "Finding real photos for stays and stops…")
+        try:
+            n_photos = await image_search.attach_images(plan)
+            yield emit("attachPhotos", "ok", f"Matched {n_photos} real photos to hotels & stops.")
+        except Exception as exc:  # noqa: BLE001
+            yield emit("attachPhotos", "warn", f"Couldn't fetch some photos: {exc}")
+
         # 6. Cost + Critic + validate ----------------------------------------
         yield emit("estimateCost", "start", "Estimating total cost & time…")
         plan = estimate_cost(plan)
